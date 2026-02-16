@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>一文逆算小説プロンプトメーカー</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['"Noto Serif JP"', 'serif'],
+            sans: ['"Zen Kaku Gothic New"', 'sans-serif'],
+          },
+          colors: {
+            ink: '#1a1a2e',
+            parchment: '#faf8f0',
+            accent: '#e94560',
+            deep: '#16213e',
+            gold: '#d4a574',
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.6s ease-out',
+            'slide-up': 'slideUp 0.5s ease-out',
+            'quill': 'quill 1.5s ease-in-out infinite',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            slideUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            quill: {
+              '0%, 100%': { transform: 'rotate(-5deg)' },
+              '50%': { transform: 'rotate(5deg)' },
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-light {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    textarea:focus, input:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(212, 165, 116, 0.4);
+    }
+    .pattern-card {
+      transition: all 0.3s ease;
+    }
+    .pattern-card:hover {
+      transform: translateY(-2px);
+    }
+    .pattern-card.selected {
+      border-color: #d4a574;
+      background: rgba(212, 165, 116, 0.1);
+      box-shadow: 0 0 20px rgba(212, 165, 116, 0.15);
+    }
+    .prompt-box {
+      font-family: 'Noto Serif JP', serif;
+      line-height: 1.9;
+      letter-spacing: 0.03em;
+    }
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: rgba(212,165,116,0.3); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(212,165,116,0.5); }
+  </style>
+</head>
+<body class="font-sans text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    // --- Pattern definitions ---
+    const PATTERNS = [
+      { id: 'emotional', label: '感動系', icon: '💧', desc: '心を揺さぶる感動の物語' },
+      { id: 'twist', label: 'ドンデン返し系', icon: '🔄', desc: '予想を覆す衝撃の展開' },
+      { id: 'horror', label: 'ホラー系', icon: '👻', desc: '背筋が凍る恐怖の物語' },
+      { id: 'comedy', label: 'コメディ系', icon: '😂', desc: '思わず笑える楽しい物語' },
+      { id: 'mystery', label: 'ミステリー系', icon: '🔍', desc: '謎が謎を呼ぶ推理の物語' },
+    ];
+
+    const WORD_COUNTS = [
+      { value: 1000, label: '1,000文字', desc: 'ショートショート' },
+      { value: 2000, label: '2,000文字', desc: '短編' },
+      { value: 3000, label: '3,000文字', desc: '読み応えあり' },
+    ];
+
+    // --- Build prompt ---
+    function buildPrompt(lastSentence, pattern, wordCount) {
+      const patternMap = {
+        emotional: '感動的で心を揺さぶる',
+        twist: '最後にドンデン返しがある驚きの',
+        horror: '背筋が凍るようなホラーの',
+        comedy: '思わず笑ってしまうコメディの',
+        mystery: '謎が解き明かされるミステリーの',
+      };
+      const style = patternMap[pattern] || '感動的な';
+      const lower = Math.round(wordCount * 0.9);
+      const upper = Math.round(wordCount * 1.1);
+
+      return `あなたはプロの小説家です。以下の条件で短編小説を書いてください。
+
+【最も重要な条件】
+この一文で「必ず」物語を終えてください：
+「${lastSentence}」
+
+【ジャンル】
+${style}物語
+
+【文字数】
+${lower}〜${upper}文字程度
+
+【執筆ルール】
+1. 物語の最後の一文は、上記の「必ず終える一文」をそのまま使ってください。一字一句変えないでください。
+2. その結末に向かって自然に流れるストーリーを逆算して構成してください。
+3. 冒頭から結末まで、読者を引き込む展開にしてください。
+4. 登場人物に魅力を持たせ、読者が感情移入できるようにしてください。
+5. 最後の一文が最大限に効果的に響くよう、伏線や展開を工夫してください。
+
+【出力形式】
+- タイトルは不要です。本文のみを出力してください。
+- 段落の区切りには空行を入れてください。
+- 最後の一文「${lastSentence}」で必ず終わってください。`;
+    }
+
+    // --- Components ---
+
+    function Header() {
+      return (
+        <header className="text-center py-8 md:py-12 animate-fade-in">
+          <div className="text-5xl md:text-6xl mb-4 animate-quill inline-block">🪶</div>
+          <h1 className="text-3xl md:text-4xl font-bold font-serif bg-gradient-to-r from-gold to-amber-300 bg-clip-text text-transparent">
+            一文逆算小説
+          </h1>
+          <p className="text-white/50 mt-3 text-sm md:text-base">
+            最後の一文から、物語が始まる
+          </p>
+          <p className="text-white/30 mt-1 text-xs">
+            AIに渡すプロンプトを自動生成します
+          </p>
+        </header>
+      );
+    }
+
+    function PatternSelector({ selected, onSelect }) {
+      return (
+        <div className="mb-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <label className="block text-gold text-sm font-medium mb-3">
+            📖 ストーリーパターン
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            {PATTERNS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => onSelect(p.id)}
+                className={`pattern-card glass rounded-xl p-3 text-center border-2 transition-all ${
+                  selected === p.id
+                    ? 'selected border-gold'
+                    : 'border-transparent hover:border-white/20'
+                }`}
+              >
+                <div className="text-2xl mb-1">{p.icon}</div>
+                <div className="text-sm font-medium">{p.label}</div>
+                <div className="text-xs text-white/40 mt-1 hidden sm:block">{p.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function WordCountSelector({ selected, onSelect }) {
+      return (
+        <div className="mb-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <label className="block text-gold text-sm font-medium mb-3">
+            📏 文字数
+          </label>
+          <div className="flex gap-3">
+            {WORD_COUNTS.map(w => (
+              <button
+                key={w.value}
+                onClick={() => onSelect(w.value)}
+                className={`flex-1 glass rounded-xl p-3 text-center border-2 transition-all ${
+                  selected === w.value
+                    ? 'border-gold bg-gold/10 shadow-lg shadow-gold/5'
+                    : 'border-transparent hover:border-white/20'
+                }`}
+              >
+                <div className="text-sm font-bold">{w.label}</div>
+                <div className="text-xs text-white/40 mt-1">{w.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function PromptResult({ prompt, onBack }) {
+      const [copied, setCopied] = useState(false);
+
+      const handleCopy = () => {
+        navigator.clipboard.writeText(prompt).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        });
+      };
+
+      return (
+        <div className="animate-fade-in">
+          {/* 使い方ガイド */}
+          <div className="glass rounded-2xl p-5 mb-6 animate-slide-up">
+            <h2 className="text-gold font-medium mb-3 text-sm">📌 使い方</h2>
+            <ol className="text-white/60 text-sm space-y-1.5 list-decimal list-inside">
+              <li>下のプロンプトを <span className="text-gold/80 font-medium">コピー</span> する</li>
+              <li><a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="text-gold/80 font-medium underline underline-offset-2 hover:text-gold transition-colors">Claude</a> / ChatGPT / Gemini などのAIチャットに貼り付ける</li>
+              <li>AIが最後の一文に向かって逆算した小説を生成してくれます ✨</li>
+            </ol>
+          </div>
+
+          {/* プロンプト表示 */}
+          <div className="glass-light rounded-2xl p-6 md:p-8 mb-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-gold font-medium text-sm">🪶 生成されたプロンプト</h2>
+              <span className="text-white/30 text-xs">{prompt.length} 文字</span>
+            </div>
+            <div className="prompt-box bg-black/20 rounded-xl p-5 text-white/85 text-sm whitespace-pre-wrap border border-white/5 max-h-[60vh] overflow-y-auto">
+              {prompt}
+            </div>
+          </div>
+
+          {/* アクションボタン */}
+          <div className="flex flex-col sm:flex-row gap-3 justify-center animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <button
+              onClick={handleCopy}
+              className={`px-8 py-4 rounded-2xl text-lg font-bold transition-all duration-300 flex items-center justify-center gap-2 ${
+                copied
+                  ? 'bg-emerald-500/20 text-emerald-300 border-2 border-emerald-500/30 scale-105'
+                  : 'bg-gradient-to-r from-gold to-amber-400 text-ink hover:shadow-lg hover:shadow-gold/25 hover:scale-105 active:scale-95'
+              }`}
+            >
+              {copied ? '✅ コピーしました！' : '📋 プロンプトをコピー'}
+            </button>
+            <a
+              href="https://claude.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-4 glass rounded-2xl hover:bg-white/10 transition-all text-white/70 hover:text-white flex items-center justify-center gap-2 text-sm no-underline"
+            >
+              🤖 Claude.ai を開く
+            </a>
+            <button
+              onClick={onBack}
+              className="px-6 py-4 glass rounded-2xl hover:bg-white/10 transition-all text-white/70 hover:text-white flex items-center justify-center gap-2 text-sm"
+            >
+              ✨ 新しく作る
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // --- Main App ---
+    function App() {
+      const [screen, setScreen] = useState('input'); // input | result
+      const [lastSentence, setLastSentence] = useState('');
+      const [pattern, setPattern] = useState('emotional');
+      const [wordCount, setWordCount] = useState(2000);
+      const [generatedPrompt, setGeneratedPrompt] = useState('');
+
+      const canGenerate = lastSentence.trim().length > 0;
+
+      const handleGenerate = () => {
+        if (!canGenerate) return;
+        const prompt = buildPrompt(lastSentence.trim(), pattern, wordCount);
+        setGeneratedPrompt(prompt);
+        setScreen('result');
+      };
+
+      const handleBack = () => {
+        setScreen('input');
+        setLastSentence('');
+        setGeneratedPrompt('');
+      };
+
+      const exampleSentences = [
+        'そして、誰もいなくなった。',
+        'それが、私たちの最後の夏だった。',
+        'あの日の約束を、ようやく果たせた気がした。',
+        'その手紙は、まだ開封されていない。',
+        'だから私は、もう振り返らないと決めた。',
+      ];
+
+      return (
+        <div className="min-h-screen px-4 py-6 md:px-6">
+          <div className="max-w-2xl mx-auto">
+            <Header />
+
+            {screen === 'input' && (
+              <div>
+                {/* 最後の一文入力 */}
+                <div className="glass rounded-2xl p-5 mb-6 animate-slide-up">
+                  <label className="block text-gold text-sm font-medium mb-2">
+                    ✍️ 小説の最後の一文
+                  </label>
+                  <textarea
+                    value={lastSentence}
+                    onChange={e => setLastSentence(e.target.value)}
+                    placeholder="例: そして、誰もいなくなった。"
+                    rows={3}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 font-serif text-lg resize-none"
+                  />
+                  <div className="mt-3">
+                    <p className="text-white/30 text-xs mb-2">💡 例文をタップして試してみよう</p>
+                    <div className="flex flex-wrap gap-2">
+                      {exampleSentences.map((s, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setLastSentence(s)}
+                          className="text-xs px-3 py-1.5 glass rounded-full text-white/50 hover:text-white/80 hover:bg-white/10 transition-all"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <PatternSelector selected={pattern} onSelect={setPattern} />
+                <WordCountSelector selected={wordCount} onSelect={setWordCount} />
+
+                {/* 生成ボタン */}
+                <div className="text-center mt-8 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!canGenerate}
+                    className={`px-10 py-4 rounded-2xl text-lg font-bold transition-all duration-300 ${
+                      canGenerate
+                        ? 'bg-gradient-to-r from-gold to-amber-400 text-ink hover:shadow-lg hover:shadow-gold/25 hover:scale-105 active:scale-95'
+                        : 'bg-white/10 text-white/30 cursor-not-allowed'
+                    }`}
+                  >
+                    🪶 プロンプトを生成する
+                  </button>
+                  {!canGenerate && (
+                    <p className="text-white/30 text-xs mt-3">
+                      最後の一文を入力してください
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {screen === 'result' && (
+              <PromptResult prompt={generatedPrompt} onBack={handleBack} />
+            )}
+
+            <footer className="text-center text-white/20 text-xs mt-12 mb-6">
+              一文逆算小説プロンプトメーカー
+            </footer>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
