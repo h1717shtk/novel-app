@@ -102,6 +102,7 @@
       { id: 'horror', label: 'ホラー系', icon: '👻', desc: '背筋が凍る恐怖の物語' },
       { id: 'comedy', label: 'コメディ系', icon: '😂', desc: '思わず笑える楽しい物語' },
       { id: 'mystery', label: 'ミステリー系', icon: '🔍', desc: '謎が謎を呼ぶ推理の物語' },
+      { id: 'romance', label: '恋愛系', icon: '💕', desc: '胸がときめく恋の物語' },
     ];
 
     const WORD_COUNTS = [
@@ -118,6 +119,7 @@
         horror: '背筋が凍るようなホラーの',
         comedy: '思わず笑ってしまうコメディの',
         mystery: '謎が解き明かされるミステリーの',
+        romance: '胸がときめく切なくも美しい恋愛の',
       };
       const style = patternMap[pattern] || '感動的な';
       const lower = Math.round(wordCount * 0.9);
@@ -173,7 +175,7 @@ ${lower}〜${upper}文字程度
           <label className="block text-gold text-sm font-medium mb-3">
             📖 ストーリーパターン
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-3">
             {PATTERNS.map(p => (
               <button
                 key={p.id}
